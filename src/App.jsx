@@ -6,7 +6,6 @@ import Habits from './pages/Habits';
 import HabitDetail from './pages/HabitDetail';
 import FutureTasks from './pages/FutureTasks';
 import Profile from './pages/Profile';
-import Namaz from './pages/Namaz';
 import BottomNav from './components/BottomNav';
 import FirstVisitAnimation from './components/FirstVisitAnimation';
 import ThemeToggle from './components/ThemeToggle';
@@ -37,12 +36,6 @@ function App() {
           <Route path="/habits" element={
             <ProtectedRoute>
               <Habits />
-              <BottomNav />
-            </ProtectedRoute>
-          } />
-          <Route path="/namaz" element={
-            <ProtectedRoute>
-              <Namaz />
               <BottomNav />
             </ProtectedRoute>
           } />
