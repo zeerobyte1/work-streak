@@ -1,5 +1,5 @@
 import { Link, useLocation } from 'react-router-dom';
-import { CheckSquare, Flame, Calendar, User } from 'lucide-react';
+import { CheckSquare, Flame, Calendar, User, Moon } from 'lucide-react';
 
 export default function BottomNav() {
   const location = useLocation();
@@ -7,6 +7,7 @@ export default function BottomNav() {
   const navItems = [
     { icon: CheckSquare, label: 'Tasks', to: '/daily-tasks' },
     { icon: Flame, label: 'Habits', to: '/habits' },
+    { icon: Moon, label: 'Namaz', to: '/namaz' },
     { icon: Calendar, label: 'Future', to: '/future-tasks' },
     { icon: User, label: 'Profile', to: '/profile' }
   ];

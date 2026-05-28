@@ -1,8 +1,8 @@
 import { useState, useEffect } from 'react';
 import { useAuth } from '../contexts/AuthContext';
 import { useNavigate } from 'react-router-dom';
-import { LogOut, Trophy, Info, Sparkles, X, Trash2, AlertTriangle, Camera, Upload } from 'lucide-react';
-import { databases, storage, account, DATABASE_ID, DAILY_TASKS_COLLECTION_ID, HABITS_COLLECTION_ID, HABIT_LOGS_COLLECTION_ID, FUTURE_TASKS_COLLECTION_ID, STORAGE_BUCKET_ID, ID, Query } from '../lib/appwrite';
+import { LogOut, Trophy, Info, Sparkles, X, Trash2, Camera, Upload } from 'lucide-react';
+import { databases, storage, account, DATABASE_ID, DAILY_TASKS_COLLECTION_ID, HABITS_COLLECTION_ID, HABIT_LOGS_COLLECTION_ID, FUTURE_TASKS_COLLECTION_ID, NAMAZ_COLLECTION_ID, STORAGE_BUCKET_ID, ID, Query } from '../lib/appwrite';
 import { formatDate } from '../lib/utils';
 import {
   User,
@@ -14,7 +14,8 @@ import {
   Target,
   Clock,
   ChevronDown,
-  ChevronUp
+  ChevronUp,
+  Moon
 } from 'lucide-react';
 
 export default function Profile() {
@@ -29,12 +30,18 @@ export default function Profile() {
     habitsContinuing: 0,
     futureTasksTotal: 0,
     futureTasksCompleted: 0,
-    futureTasksContinuing: 0
+    futureTasksContinuing: 0,
+    namazCompleted: 0,
+    namazTotal: 0
   });
-  const [history, setHistory] = useState([]);
+  const [dailyTasksHistory, setDailyTasksHistory] = useState([]);
+  const [habitsHistory, setHabitsHistory] = useState([]);
+  const [namazHistory, setNamazHistory] = useState([]);
   const [futureTasksHistory, setFutureTasksHistory] = useState([]);
   const [loading, setLoading] = useState(true);
-  const [showHistory, setShowHistory] = useState(false);
+  const [showDailyHistory, setShowDailyHistory] = useState(false);
+  const [showHabitsHistory, setShowHabitsHistory] = useState(false);
+  const [showNamazHistory, setShowNamazHistory] = useState(false);
   const [showFutureHistory, setShowFutureHistory] = useState(false);
   const [showAchievementsInfo, setShowAchievementsInfo] = useState(false);
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
@@ -67,6 +74,7 @@ export default function Profile() {
         databases.listDocuments(DATABASE_ID, HABIT_LOGS_COLLECTION_ID, [Query.equal('userId', user.$id)]),
         databases.listDocuments(DATABASE_ID, FUTURE_TASKS_COLLECTION_ID, [Query.equal('userId', user.$id)])
       ]);
+
 
       // Calculate habit stats
       let completedHabitsCount = 0;
@@ -102,6 +110,10 @@ export default function Profile() {
       // Calculate future tasks stats
       const completedFutureTasks = futureTasks.documents.filter(t => t.completed).length;
       const continuingFutureTasks = futureTasks.documents.filter(t => !t.completed).length;
+
+      // Calculate namaz stats - count only completed namaz
+      const completedNamaz = namazRecords.filter(r => r.completed === true).length;
+      const totalNamaz = 6; // Fixed total of 6 namaz types
 
       // Calculate streak (consecutive days with completed daily tasks)
       let streak = 0;
@@ -141,19 +153,19 @@ export default function Profile() {
         habitsContinuing: continuingHabitsCount,
         futureTasksTotal: futureTasks.documents.length,
         futureTasksCompleted: completedFutureTasks,
-        futureTasksContinuing: continuingFutureTasks
+        futureTasksContinuing: continuingFutureTasks,
+        namazCompleted: completedNamaz,
+        namazTotal: totalNamaz
       });
 
-      // Organize history by date
-      const historyMap = {};
-      
-      // Add daily tasks to history
+      // Organize daily tasks history by date
+      const dailyTasksMap = {};
       dailyTasks.documents.forEach(task => {
         const date = task.date || task.createdAt?.split('T')[0];
-        if (!historyMap[date]) {
-          historyMap[date] = { dailyTasks: [], habits: [] };
+        if (!dailyTasksMap[date]) {
+          dailyTasksMap[date] = [];
         }
-        historyMap[date].dailyTasks.push({
+        dailyTasksMap[date].push({
           title: task.title,
           completed: task.completed,
           completedAt: task.completed ? task.createdAt : null,
@@ -161,14 +173,21 @@ export default function Profile() {
         });
       });
 
-      // Add habit logs to history
+      const sortedDailyHistory = Object.entries(dailyTasksMap)
+        .sort(([a], [b]) => new Date(b) - new Date(a))
+        .map(([date, tasks]) => ({ date, tasks }));
+
+      setDailyTasksHistory(sortedDailyHistory);
+
+      // Organize habits history by date
+      const habitsMap = {};
       habitLogs.documents.forEach(log => {
         const date = log.date || log.completedAt?.split('T')[0];
-        if (!historyMap[date]) {
-          historyMap[date] = { dailyTasks: [], habits: [] };
+        if (!habitsMap[date]) {
+          habitsMap[date] = [];
         }
         const habitName = habits.documents.find(h => h.$id === log.habitId)?.name || 'Unknown Habit';
-        historyMap[date].habits.push({
+        habitsMap[date].push({
           habitId: log.habitId,
           name: habitName,
           completedAt: log.completedAt,
@@ -176,12 +195,43 @@ export default function Profile() {
         });
       });
 
-      // Convert to array and sort by date (newest first)
-      const sortedHistory = Object.entries(historyMap)
+      const sortedHabitsHistory = Object.entries(habitsMap)
         .sort(([a], [b]) => new Date(b) - new Date(a))
-        .map(([date, data]) => ({ date, ...data }));
+        .map(([date, habits]) => ({ date, habits }));
 
-      setHistory(sortedHistory);
+      setHabitsHistory(sortedHabitsHistory);
+
+      // Organize namaz history by date - only show completed namaz
+      const namazMap = {};
+      namazRecords.forEach(record => {
+        // Only include completed namaz in history
+        if (record.completed !== true) return;
+        
+        const date = record.date || record.createdAt?.split('T')[0];
+        if (!namazMap[date]) {
+          namazMap[date] = [];
+        }
+        const namazNames = {
+          'fajar': 'Fajar',
+          'zohar': 'Zohar',
+          'asar': 'Asar',
+          'maghrib': 'Maghrib',
+          'isha': 'Isha',
+        };
+        namazMap[date].push({
+          namazId: record.namazId,
+          name: namazNames[record.namazId] || record.namazId,
+          completed: record.completed,
+          completedAt: record.createdAt,
+          type: 'namaz_completion'
+        });
+      });
+
+      const sortedNamazHistory = Object.entries(namazMap)
+        .sort(([a], [b]) => new Date(b) - new Date(a))
+        .map(([date, namaz]) => ({ date, namaz }));
+
+      setNamazHistory(sortedNamazHistory);
 
       // Create separate history for future tasks
       const futureTasksMap = {};
@@ -216,11 +266,12 @@ export default function Profile() {
       setDeleting(true);
 
       // Delete all user data from collections
-      const [dailyTasks, habits, habitLogs, futureTasks] = await Promise.all([
+      const [dailyTasks, habits, habitLogs, futureTasks, namaz] = await Promise.all([
         databases.listDocuments(DATABASE_ID, DAILY_TASKS_COLLECTION_ID, [Query.equal('userId', user.$id)]),
         databases.listDocuments(DATABASE_ID, HABITS_COLLECTION_ID, [Query.equal('userId', user.$id)]),
         databases.listDocuments(DATABASE_ID, HABIT_LOGS_COLLECTION_ID, [Query.equal('userId', user.$id)]),
-        databases.listDocuments(DATABASE_ID, FUTURE_TASKS_COLLECTION_ID, [Query.equal('userId', user.$id)])
+        databases.listDocuments(DATABASE_ID, FUTURE_TASKS_COLLECTION_ID, [Query.equal('userId', user.$id)]),
+        databases.listDocuments(DATABASE_ID, NAMAZ_COLLECTION_ID, [Query.equal('userId', user.$id)]).catch(() => ({ documents: [] }))
       ]);
 
       // Delete all documents
@@ -228,10 +279,19 @@ export default function Profile() {
         ...dailyTasks.documents.map(doc => databases.deleteDocument(DATABASE_ID, DAILY_TASKS_COLLECTION_ID, doc.$id)),
         ...habits.documents.map(doc => databases.deleteDocument(DATABASE_ID, HABITS_COLLECTION_ID, doc.$id)),
         ...habitLogs.documents.map(doc => databases.deleteDocument(DATABASE_ID, HABIT_LOGS_COLLECTION_ID, doc.$id)),
-        ...futureTasks.documents.map(doc => databases.deleteDocument(DATABASE_ID, FUTURE_TASKS_COLLECTION_ID, doc.$id))
+        ...futureTasks.documents.map(doc => databases.deleteDocument(DATABASE_ID, FUTURE_TASKS_COLLECTION_ID, doc.$id)),
+        ...namaz.documents.map(doc => databases.deleteDocument(DATABASE_ID, NAMAZ_COLLECTION_ID, doc.$id))
       ];
 
       await Promise.all(deletePromises);
+
+      // Delete localStorage namaz data
+      const allKeys = Object.keys(localStorage);
+      allKeys.forEach(key => {
+        if (key.startsWith('namaz_' + user.$id + '_')) {
+          localStorage.removeItem(key);
+        }
+      });
 
       // Delete the account
       const result = await deleteAccount();
@@ -326,9 +386,16 @@ export default function Profile() {
       description: `${stats.habitsCompleted} completed`
     },
     {
+      icon: Moon,
+      label: 'Namaz',
+      value: `${stats.namazCompleted}/6`,
+      color: 'from-indigo-500 to-purple-500',
+      description: 'Completed'
+    },
+    {
       icon: Calendar,
       label: 'Future Tasks',
-      value: `${stats.futureTasksContinuing} ongoing`,
+      value: `${stats.futureTasksContinuing} onlgoing`,
       color: 'from-green-500 to-emerald-500',
       description: `${stats.futureTasksCompleted} completed`
     }
@@ -533,70 +600,129 @@ export default function Profile() {
           <div className="glass-card rounded-2xl p-5 mt-4">
             <div 
               className="flex items-center justify-between mb-4 cursor-pointer"
-              onClick={() => setShowHistory(!showHistory)}
+              onClick={() => setShowDailyHistory(!showDailyHistory)}
             >
               <div className="flex items-center gap-2">
-                <Calendar className="w-5 h-5 text-purple-600" />
-                <h2 className="text-lg font-semibold text-gray-800 dark:text-gray-100">Detailed History</h2>
+                <CheckSquare className="w-5 h-5 text-blue-600" />
+                <h2 className="text-lg font-semibold text-gray-800 dark:text-gray-100">Daily Tasks History</h2>
               </div>
-              {showHistory ? <ChevronUp className="w-5 h-5 text-gray-600 dark:text-gray-300" /> : <ChevronDown className="w-5 h-5 text-gray-600 dark:text-gray-300" />}
+              {showDailyHistory ? <ChevronUp className="w-5 h-5 text-gray-600 dark:text-gray-300" /> : <ChevronDown className="w-5 h-5 text-gray-600 dark:text-gray-300" />}
             </div>
             
-            {showHistory && (
+            {showDailyHistory && (
               <div className="space-y-4">
-                {history.length === 0 ? (
-                  <p className="text-gray-600 text-center py-4 dark:text-gray-300">No history yet. Start completing tasks!</p>
+                {dailyTasksHistory.length === 0 ? (
+                  <p className="text-gray-600 text-center py-4 dark:text-gray-300">No daily tasks history yet.</p>
                 ) : (
-                  history.map((day) => (
+                  dailyTasksHistory.map((day) => (
                     <div key={day.date} className="border border-gray-200 dark:border-gray-700 rounded-xl p-4">
                       <div className="flex items-center gap-2 mb-3">
-                        <Calendar className="w-4 h-4 text-purple-600" />
+                        <Calendar className="w-4 h-4 text-blue-600" />
                         <h3 className="font-semibold text-gray-800 dark:text-gray-100">{formatDate(day.date)}</h3>
                       </div>
-                      
-                      {day.dailyTasks.length > 0 && (
-                        <div className="mb-3">
-                          <p className="text-sm font-medium text-blue-600 mb-2">Daily Tasks</p>
-                          <div className="space-y-2">
-                            {day.dailyTasks.map((task, idx) => (
-                              <div key={idx} className="flex items-center gap-2 text-sm">
-                                <CheckSquare className={`w-4 h-4 ${task.completed ? 'text-green-500' : 'text-gray-400 dark:text-gray-500'}`} />
-                                <span className={task.completed ? 'text-gray-800 dark:text-gray-100' : 'text-gray-500 dark:text-gray-400 line-through'}>
-                                  {task.title}
-                                </span>
-                                {task.completedAt && (
-                                  <span className="text-xs text-gray-500 ml-auto dark:text-gray-400">
-                                    {new Date(task.completedAt).toLocaleTimeString('en-US', {hour: '2-digit', minute:'2-digit', hour12: true})}
-                                  </span>
-                                )}
-                              </div>
-                            ))}
+                      <div className="space-y-2">
+                        {day.tasks.map((task, idx) => (
+                          <div key={idx} className="flex items-center gap-2 text-sm">
+                            <CheckSquare className={`w-4 h-4 ${task.completed ? 'text-green-500' : 'text-gray-400 dark:text-gray-500'}`} />
+                            <span className={task.completed ? 'text-gray-800 dark:text-gray-100' : 'text-gray-500 dark:text-gray-400'}>
+                              {task.title}
+                            </span>
+                            {task.completedAt && (
+                              <span className="text-xs text-gray-500 ml-auto dark:text-gray-400">
+                                {new Date(task.completedAt).toLocaleTimeString('en-US', {hour: '2-digit', minute:'2-digit', hour12: true})}
+                              </span>
+                            )}
                           </div>
-                        </div>
-                      )}
-                      
-                      {day.habits.length > 0 && (
-                        <div className="mb-3">
-                          <p className="text-sm font-medium text-orange-600 mb-2">Habits Completed</p>
-                          <div className="space-y-2">
-                            {day.habits.map((habit, idx) => (
-                              <div key={idx} className="flex items-center gap-2 text-sm">
-                                <Flame className="w-4 h-4 text-orange-500" />
-                                <span className="text-gray-800 dark:text-gray-100">{habit.name}</span>
-                                {habit.completedAt && (
-                                  <span className="text-xs text-gray-500 ml-auto dark:text-gray-400">
-                                    {new Date(habit.completedAt).toLocaleTimeString('en-US', {hour: '2-digit', minute:'2-digit', hour12: true})}
-                                  </span>
-                                )}
-                              </div>
-                            ))}
-                          </div>
-                        </div>
-                      )}
+                        ))}
+                      </div>
+                    </div>
+                  ))
+                )}
+              </div>
+            )}
+          </div>
 
-                      {day.dailyTasks.length === 0 && day.habits.length === 0 && (
-                        <p className="text-gray-500 text-sm dark:text-gray-400">No activity on this day</p>
-                      )}
+          <div className="glass-card rounded-2xl p-5 mt-4">
+            <div 
+              className="flex items-center justify-between mb-4 cursor-pointer"
+              onClick={() => setShowHabitsHistory(!showHabitsHistory)}
+            >
+              <div className="flex items-center gap-2">
+                <Flame className="w-5 h-5 text-orange-600" />
+                <h2 className="text-lg font-semibold text-gray-800 dark:text-gray-100">Habits History</h2>
+              </div>
+              {showHabitsHistory ? <ChevronUp className="w-5 h-5 text-gray-600 dark:text-gray-300" /> : <ChevronDown className="w-5 h-5 text-gray-600 dark:text-gray-300" />}
+            </div>
+            
+            {showHabitsHistory && (
+              <div className="space-y-4">
+                {habitsHistory.length === 0 ? (
+                  <p className="text-gray-600 text-center py-4 dark:text-gray-300">No habits history yet.</p>
+                ) : (
+                  habitsHistory.map((day) => (
+                    <div key={day.date} className="border border-gray-200 dark:border-gray-700 rounded-xl p-4">
+                      <div className="flex items-center gap-2 mb-3">
+                        <Calendar className="w-4 h-4 text-orange-600" />
+                        <h3 className="font-semibold text-gray-800 dark:text-gray-100">{formatDate(day.date)}</h3>
+                      </div>
+                      <div className="space-y-2">
+                        {day.habits.map((habit, idx) => (
+                          <div key={idx} className="flex items-center gap-2 text-sm">
+                            <Flame className="w-4 h-4 text-orange-500" />
+                            <span className="text-gray-800 dark:text-gray-100">{habit.name}</span>
+                            {habit.completedAt && (
+                              <span className="text-xs text-gray-500 ml-auto dark:text-gray-400">
+                                {new Date(habit.completedAt).toLocaleTimeString('en-US', {hour: '2-digit', minute:'2-digit', hour12: true})}
+                              </span>
+                            )}
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  ))
+                )}
+              </div>
+            )}
+          </div>
+
+          <div className="glass-card rounded-2xl p-5 mt-4">
+            <div 
+              className="flex items-center justify-between mb-4 cursor-pointer"
+              onClick={() => setShowNamazHistory(!showNamazHistory)}
+            >
+              <div className="flex items-center gap-2">
+                <Moon className="w-5 h-5 text-indigo-600" />
+                <h2 className="text-lg font-semibold text-gray-800 dark:text-gray-100">Namaz History</h2>
+              </div>
+              {showNamazHistory ? <ChevronUp className="w-5 h-5 text-gray-600 dark:text-gray-300" /> : <ChevronDown className="w-5 h-5 text-gray-600 dark:text-gray-300" />}
+            </div>
+            
+            {showNamazHistory && (
+              <div className="space-y-4">
+                {namazHistory.length === 0 ? (
+                  <p className="text-gray-600 text-center py-4 dark:text-gray-300">No namaz history yet.</p>
+                ) : (
+                  namazHistory.map((day) => (
+                    <div key={day.date} className="border border-gray-200 dark:border-gray-700 rounded-xl p-4">
+                      <div className="flex items-center gap-2 mb-3">
+                        <Calendar className="w-4 h-4 text-indigo-600" />
+                        <h3 className="font-semibold text-gray-800 dark:text-gray-100">{formatDate(day.date)}</h3>
+                      </div>
+                      <div className="space-y-2">
+                        {day.namaz.map((namaz, idx) => (
+                          <div key={idx} className="flex items-center gap-2 text-sm">
+                            <Moon className={`w-4 h-4 ${namaz.completed ? 'text-green-500' : 'text-gray-400 dark:text-gray-500'}`} />
+                            <span className={namaz.completed ? 'text-gray-800 dark:text-gray-100' : 'text-gray-500 dark:text-gray-400'}>
+                              {namaz.name}
+                            </span>
+                            {namaz.completedAt && (
+                              <span className="text-xs text-gray-500 ml-auto dark:text-gray-400">
+                                {new Date(namaz.completedAt).toLocaleTimeString('en-US', {hour: '2-digit', minute:'2-digit', hour12: true})}
+                              </span>
+                            )}
+                          </div>
+                        ))}
+                      </div>
                     </div>
                   ))
                 )}
